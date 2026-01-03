@@ -15,7 +15,8 @@ import {
   Type,
   List,
   BookOpen,
-  Timer
+  Timer,
+  FileText
 } from 'lucide-react'
 import { useDocument } from '../hooks/useDocuments'
 import { useSettings } from '../context/SettingsContext'
@@ -29,7 +30,7 @@ export default function Reader() {
   const { settings } = useSettings()
 
   // Reading state
-  const [mode, setMode] = useState('word') // 'word' or 'sentence'
+  const [mode, setMode] = useState('word') // 'word', 'sentence', or 'page'
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -54,7 +55,10 @@ export default function Reader() {
     if (!doc?.document?.pages) return []
     const page = doc.document.pages[currentPage - 1]
     if (!page) return []
-    return mode === 'word' ? page.words : page.sentences
+    if (mode === 'word') return page.words
+    if (mode === 'sentence') return page.sentences
+    // For 'page' mode, return the full page text as a single item array
+    return [page.text]
   }, [doc, currentPage, mode])
 
   const content = getCurrentContent()
@@ -107,9 +111,15 @@ export default function Reader() {
         }
       }
       
-      // Use saved page if absolute position is 0 (fresh start)
+      // For fresh start (position 0), find first page with content
       if (savedAbsolutePosition === 0) {
-        targetPage = savedPage
+        // Find first page that has words
+        const firstPageWithContent = doc.document.pages.findIndex(page => page.words.length > 0)
+        if (firstPageWithContent !== -1) {
+          targetPage = firstPageWithContent + 1
+        } else {
+          targetPage = savedPage
+        }
         targetIndex = 0
       }
       
@@ -126,21 +136,53 @@ export default function Reader() {
 
   // Auto-play logic
   useEffect(() => {
+    // If current page has no content, find next page with content
+    if (isPlaying && content.length === 0 && doc?.document?.pages) {
+      for (let i = currentPage; i < doc.document.pages.length; i++) {
+        if (doc.document.pages[i].words.length > 0) {
+          setCurrentPage(i + 1)
+          setCurrentIndex(0)
+          return
+        }
+      }
+      // No more content, stop playing
+      setIsPlaying(false)
+      return
+    }
+
     if (isPlaying && content.length > 0) {
       // Calculate interval based on WPM and mode
       const baseInterval = 60000 / speed // ms per word at given WPM
-      const interval = mode === 'sentence' 
-        ? baseInterval * (currentItem.split(' ').length || 1) * 0.8 // Sentences need more time
-        : baseInterval
+      let interval
+      if (mode === 'page') {
+        // For page mode, calculate based on word count of the page
+        const pageWordCount = currentItem.split(/\s+/).length || 1
+        interval = baseInterval * pageWordCount
+      } else if (mode === 'sentence') {
+        interval = baseInterval * (currentItem.split(' ').length || 1) * 0.8 // Sentences need more time
+      } else {
+        interval = baseInterval
+      }
 
       timerRef.current = setTimeout(() => {
         if (currentIndex < content.length - 1) {
           setCurrentIndex(prev => prev + 1)
           wordsReadRef.current += mode === 'word' ? 1 : (currentItem.split(' ').length || 1)
         } else if (currentPage < totalPages) {
-          // Move to next page
-          setCurrentPage(prev => prev + 1)
+          // Find next page with content
+          let nextPage = currentPage + 1
+          for (let i = currentPage; i < doc.document.pages.length; i++) {
+            if (doc.document.pages[i].words.length > 0) {
+              nextPage = i + 1
+              break
+            }
+          }
+          setCurrentPage(nextPage)
           setCurrentIndex(0)
+          if (mode === 'page') {
+            const pageWordCount = doc?.document?.pages[currentPage - 1]?.words?.length || 0
+            wordsReadRef.current += pageWordCount
+          }
         } else {
           // End of document
           setIsPlaying(false)
@@ -154,7 +196,7 @@ export default function Reader() {
         clearTimeout(timerRef.current)
       }
     }
-  }, [isPlaying, currentIndex, currentPage, content, mode, speed, currentItem, totalPages])
+  }, [isPlaying, currentIndex, currentPage, content, mode, speed, currentItem, totalPages, doc])
 
   // Calculate absolute position (total words read across all pages)
   const getAbsolutePosition = useCallback(() => {
@@ -316,26 +358,66 @@ export default function Reader() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
+  // Helper to find next page with content
+  const findNextPageWithContent = (fromPage) => {
+    if (!doc?.document?.pages) return fromPage
+    for (let i = fromPage; i < doc.document.pages.length; i++) {
+      if (doc.document.pages[i].words.length > 0) {
+        return i + 1
+      }
+    }
+    return fromPage // No content found, stay on current
+  }
+
+  // Helper to find previous page with content
+  const findPrevPageWithContent = (fromPage) => {
+    if (!doc?.document?.pages) return fromPage
+    for (let i = fromPage - 2; i >= 0; i--) {
+      if (doc.document.pages[i].words.length > 0) {
+        return i + 1
+      }
+    }
+    return fromPage // No content found, stay on current
+  }
+
   // Navigation handlers
   const handlePrevious = () => {
     setIsPlaying(false)
-    if (currentIndex > 0) {
+    if (mode === 'page') {
+      // In page mode, previous goes to previous page with content
+      if (currentPage > 1) {
+        const prevPage = findPrevPageWithContent(currentPage)
+        setCurrentPage(prevPage)
+        setCurrentIndex(0)
+      }
+    } else if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1)
     } else if (currentPage > 1) {
-      setCurrentPage(prev => prev - 1)
+      // Find previous page with content
+      const prevPage = findPrevPageWithContent(currentPage)
+      setCurrentPage(prevPage)
       // Will set to last index of previous page after content updates
       const prevPageContent = mode === 'word' 
-        ? doc.document.pages[currentPage - 2].words 
-        : doc.document.pages[currentPage - 2].sentences
-      setCurrentIndex(prevPageContent.length - 1)
+        ? doc.document.pages[prevPage - 1].words 
+        : doc.document.pages[prevPage - 1].sentences
+      setCurrentIndex(Math.max(0, prevPageContent.length - 1))
     }
   }
 
   const handleNext = () => {
-    if (currentIndex < content.length - 1) {
+    if (mode === 'page') {
+      // In page mode, next goes to next page with content
+      if (currentPage < totalPages) {
+        const nextPage = findNextPageWithContent(currentPage)
+        setCurrentPage(nextPage)
+        setCurrentIndex(0)
+      }
+    } else if (currentIndex < content.length - 1) {
       setCurrentIndex(prev => prev + 1)
     } else if (currentPage < totalPages) {
-      setCurrentPage(prev => prev + 1)
+      // Find next page with content
+      const nextPage = findNextPageWithContent(currentPage)
+      setCurrentPage(nextPage)
       setCurrentIndex(0)
     }
   }
@@ -343,7 +425,8 @@ export default function Reader() {
   const handlePrevPage = () => {
     if (currentPage > 1) {
       setIsPlaying(false)
-      setCurrentPage(prev => prev - 1)
+      const prevPage = findPrevPageWithContent(currentPage)
+      setCurrentPage(prevPage)
       setCurrentIndex(0)
     }
   }
@@ -351,7 +434,8 @@ export default function Reader() {
   const handleNextPage = () => {
     if (currentPage < totalPages) {
       setIsPlaying(false)
-      setCurrentPage(prev => prev + 1)
+      const nextPage = findNextPageWithContent(currentPage)
+      setCurrentPage(nextPage)
       setCurrentIndex(0)
     }
   }
@@ -388,8 +472,10 @@ export default function Reader() {
       if (cumulative + pageWords > targetPosition) {
         setIsPlaying(false)
         setCurrentPage(i + 1)
-        // For word mode, set exact index; for sentence mode, estimate
-        if (mode === 'word') {
+        // For page mode, always index 0; for word mode, set exact index; for sentence mode, estimate
+        if (mode === 'page') {
+          setCurrentIndex(0)
+        } else if (mode === 'word') {
           setCurrentIndex(Math.min(targetPosition - cumulative, pageWords - 1))
         } else {
           const sentenceCount = doc.document.pages[i].sentences.length
@@ -458,19 +544,27 @@ export default function Reader() {
     navigate('/')
   }
 
-  // Get bionic reading parts
+  // Get bionic reading parts - with trailing punctuation separated for visibility
   const getBionicParts = (word) => {
-    if (!word) return { highlighted: '', rest: '' }
-    const length = word.length
+    if (!word) return { highlighted: '', rest: '', punctuation: '' }
     
-    if (length === 1) return { highlighted: word, rest: '' }
-    if (length === 2) return { highlighted: word[0], rest: word[1] }
-    if (length === 3) return { highlighted: word.slice(0, 2), rest: word.slice(2) }
+    // Extract trailing punctuation (periods, question marks, exclamation marks, etc.)
+    const punctuationMatch = word.match(/([.!?;:,]+)$/)
+    const punctuation = punctuationMatch ? punctuationMatch[1] : ''
+    const cleanWord = punctuation ? word.slice(0, -punctuation.length) : word
+    
+    const length = cleanWord.length
+    
+    if (length === 0) return { highlighted: '', rest: '', punctuation }
+    if (length === 1) return { highlighted: cleanWord, rest: '', punctuation }
+    if (length === 2) return { highlighted: cleanWord[0], rest: cleanWord[1], punctuation }
+    if (length === 3) return { highlighted: cleanWord.slice(0, 2), rest: cleanWord.slice(2), punctuation }
     
     const highlightLen = Math.max(1, Math.ceil(length * 0.45))
     return {
-      highlighted: word.slice(0, highlightLen),
-      rest: word.slice(highlightLen)
+      highlighted: cleanWord.slice(0, highlightLen),
+      rest: cleanWord.slice(highlightLen),
+      punctuation
     }
   }
 
@@ -480,11 +574,12 @@ export default function Reader() {
     return (
       <span className="bionic-text">
         {words.map((word, idx) => {
-          const { highlighted, rest } = getBionicParts(word)
+          const { highlighted, rest, punctuation } = getBionicParts(word)
           return (
             <span key={idx} className="bionic-word">
               <span className="bionic-highlight">{highlighted}</span>
               <span className="bionic-rest">{rest}</span>
+              {punctuation && <span className="bionic-punctuation">{punctuation}</span>}
               {idx < words.length - 1 && ' '}
             </span>
           )
@@ -564,13 +659,17 @@ export default function Reader() {
           className="reading-display"
           onClick={() => setIsPlaying(prev => !prev)}
         >
-          <div className="reading-content">
+          <div className={`reading-content ${mode === 'page' ? 'page-mode' : ''}`}>
             {mode === 'word' ? (
               renderBionicText(currentItem)
-            ) : (
+            ) : mode === 'sentence' ? (
               <span className="sentence-text">
                 {renderBionicText(currentItem)}
               </span>
+            ) : (
+              <div className="page-text">
+                {renderBionicText(currentItem)}
+              </div>
             )}
           </div>
 
@@ -635,6 +734,13 @@ export default function Reader() {
               <List size={18} />
               <span>Sentences</span>
             </button>
+            <button
+              className={`mode-btn ${mode === 'page' ? 'active' : ''}`}
+              onClick={() => { setMode('page'); setCurrentIndex(0); setIsPlaying(false); }}
+            >
+              <FileText size={18} />
+              <span>Pages</span>
+            </button>
           </div>
 
           {/* Playback Controls */}
@@ -651,8 +757,8 @@ export default function Reader() {
             <button 
               className="btn btn-ghost btn-icon"
               onClick={handlePrevious}
-              disabled={currentIndex <= 0 && currentPage <= 1}
-              title="Previous"
+              disabled={mode === 'page' ? currentPage <= 1 : (currentIndex <= 0 && currentPage <= 1)}
+              title={mode === 'page' ? 'Previous Page' : 'Previous'}
             >
               <SkipBack size={20} />
             </button>
@@ -667,8 +773,8 @@ export default function Reader() {
             <button 
               className="btn btn-ghost btn-icon"
               onClick={handleNext}
-              disabled={currentIndex >= content.length - 1 && currentPage >= totalPages}
-              title="Next"
+              disabled={mode === 'page' ? currentPage >= totalPages : (currentIndex >= content.length - 1 && currentPage >= totalPages)}
+              title={mode === 'page' ? 'Next Page' : 'Next'}
             >
               <SkipForward size={20} />
             </button>
@@ -730,7 +836,11 @@ export default function Reader() {
             )}
           </div>
           <div className="status-item">
-            <span>{mode === 'word' ? 'Word' : 'Sentence'} {currentIndex + 1} of {content.length}</span>
+            {mode === 'page' ? (
+              <span>{doc?.document?.pages[currentPage - 1]?.words?.length || 0} words on this page</span>
+            ) : (
+              <span>{mode === 'word' ? 'Word' : 'Sentence'} {currentIndex + 1} of {content.length}</span>
+            )}
           </div>
           <div className="status-item">
             <Timer size={14} />
