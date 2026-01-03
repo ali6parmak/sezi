@@ -18,9 +18,9 @@ Download the latest version for your operating system:
 
 | Platform | Download |
 |----------|----------|
-| Linux | [Sezi.AppImage](https://github.com/ali6parmak/sezi/releases/download/v1.0.0/Sezi-1.0.0.AppImage) |
-| Windows | [Sezi Setup.exe](https://github.com/ali6parmak/sezi/releases/download/v1.0.0/Sezi.Setup.1.0.0.exe) |
-| macOS | [Sezi.dmg](https://github.com/ali6parmak/sezi/releases/download/v1.0.0/Sezi-1.0.0.dmg) |
+| Linux | [Sezi.AppImage](https://github.com/ali6parmak/sezi/releases/download/v1.2.5/Sezi-1.0.0.AppImage) |
+| Windows | [Sezi Setup.exe](https://github.com/ali6parmak/sezi/releases/download/v1.2.5/Sezi.Setup.1.0.0.exe) |
+| macOS | [Sezi.dmg](https://github.com/ali6parmak/sezi/releases/download/v1.2.5/Sezi-1.0.0.dmg) |
 
 > **Note**: You need **Python 3.9+** installed on your system. Download from [python.org](https://python.org/) if you don't have it.
 
