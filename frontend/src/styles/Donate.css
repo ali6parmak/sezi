@@ -1,0 +1,338 @@
+/* Donate Page Styles */
+.donate {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.donate-header {
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-card);
+}
+
+.donate-main {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 3rem 2rem 4rem;
+}
+
+/* Hero Section */
+.donate-hero {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.hero-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(239, 68, 68, 0.2));
+  border-radius: 50%;
+  margin-bottom: 1.5rem;
+}
+
+.heart-icon {
+  width: 40px;
+  height: 40px;
+  color: var(--accent-primary);
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.donate-hero h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  font-family: var(--font-display);
+}
+
+.hero-subtitle {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  max-width: 500px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* Sections */
+.donate-section {
+  margin-bottom: 3rem;
+}
+
+.donate-section h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1.5rem;
+  font-family: var(--font-display);
+}
+
+/* Why Donate Grid */
+.reasons-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.reason-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  text-align: center;
+  transition: all var(--transition-normal);
+}
+
+.reason-card:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+}
+
+.reason-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--accent-primary);
+  margin-bottom: 1rem;
+}
+
+.reason-card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.reason-card p {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Crypto Section */
+.crypto-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.crypto-icon {
+  color: var(--accent-primary);
+}
+
+.wallet-card {
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  text-align: center;
+}
+
+.wallet-type {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.crypto-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.wallet-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wallet-address-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.wallet-address {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  word-break: break-all;
+  text-align: left;
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.copy-btn:hover {
+  background: var(--accent-secondary);
+  transform: scale(1.02);
+}
+
+.copy-btn.copied {
+  background: #22c55e;
+}
+
+.qr-section {
+  margin-bottom: 1.5rem;
+}
+
+.qr-placeholder {
+  display: inline-block;
+  padding: 1rem;
+  background: white;
+  border-radius: var(--radius-lg);
+  margin-bottom: 0.75rem;
+}
+
+.qr-code {
+  display: block;
+  width: 150px;
+  height: 150px;
+}
+
+.qr-hint {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.supported-tokens {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.supported-label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.token-badge {
+  padding: 0.25rem 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Thank You Section */
+.thank-you-card {
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(239, 68, 68, 0.05));
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  text-align: center;
+}
+
+.thank-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--accent-primary);
+  margin-bottom: 1rem;
+}
+
+.thank-you-card h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+}
+
+.thank-you-card p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 0.5rem;
+}
+
+.signature {
+  font-style: italic;
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+
+/* Other Ways to Support */
+.support-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.support-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: all var(--transition-fast);
+}
+
+.support-link:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.support-link svg {
+  color: var(--text-muted);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .donate-main {
+    padding: 2rem 1rem 3rem;
+  }
+
+  .donate-hero h1 {
+    font-size: 2rem;
+  }
+
+  .wallet-address-container {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .wallet-address {
+    text-align: center;
+    font-size: 0.8rem;
+  }
+
+  .copy-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
