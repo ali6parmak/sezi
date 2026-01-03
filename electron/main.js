@@ -3,9 +3,6 @@ const { spawn } = require('child_process')
 const path = require('path')
 const fs = require('fs')
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling
-if (require('electron-squirrel-startup')) app.quit()
-
 let mainWindow
 let backendProcess
 const isDev = process.env.NODE_ENV === 'development'
