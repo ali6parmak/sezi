@@ -4,9 +4,13 @@ A modern speed reading application for PDF documents. Read faster by eliminating
 
 > **Sezi** (Turkish: *sezi*) — intuition, foreboding, a sense of knowing. Read with flow.
 
-![Sezi](https://img.shields.io/badge/Sezi-Speed%20Reading-orange?style=for-the-badge)
+![Sezi](https://img.shields.io/badge/Sezi-Speed%20Reading-cyan?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20|%20macOS%20|%20Linux-blue?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+
+<p align="center">
+  <img src="app.gif" alt="Sezi Demo" width="800">
+</p>
 
 ## 📥 Download
 
