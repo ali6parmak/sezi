@@ -261,7 +261,7 @@ function copyDirSync(src, dest, excludes = []) {
   }
 }
 
-// Check if backend is ready using http module (more reliable than fetch in Electron)
+// Check if backend is ready using http module
 function checkBackendHealth() {
   return new Promise((resolve) => {
     const req = http.get(`${BACKEND_URL}/`, (res) => {
@@ -300,7 +300,6 @@ function startBackend(pythonExe) {
   console.log('Working directory:', runtimePath)
   console.log('Backend URL:', BACKEND_URL)
 
-  // Set environment variable for port
   const env = { 
     ...process.env, 
     PYTHONUNBUFFERED: '1',
@@ -334,8 +333,41 @@ function startBackend(pythonExe) {
   return backendProcess
 }
 
+// Get the frontend path
+function getFrontendPath() {
+  if (isDev) {
+    return null // Use dev server URL
+  }
+  
+  // In production, frontend is bundled in app.asar
+  const possiblePaths = [
+    path.join(__dirname, '..', 'frontend', 'dist', 'index.html'),
+    path.join(process.resourcesPath, 'app', 'frontend', 'dist', 'index.html'),
+    path.join(app.getAppPath(), 'frontend', 'dist', 'index.html')
+  ]
+  
+  for (const p of possiblePaths) {
+    console.log('Checking frontend path:', p)
+    if (fs.existsSync(p)) {
+      console.log('Found frontend at:', p)
+      return p
+    }
+  }
+  
+  // Log all files in app directory for debugging
+  console.log('App path:', app.getAppPath())
+  console.log('__dirname:', __dirname)
+  console.log('resourcesPath:', process.resourcesPath)
+  
+  return possiblePaths[0] // Return first path as fallback
+}
+
 // Create main window
 function createMainWindow() {
+  // Disable GPU acceleration to avoid Vulkan issues on some systems
+  app.commandLine.appendSwitch('disable-gpu')
+  app.commandLine.appendSwitch('disable-software-rasterizer')
+  
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -346,7 +378,8 @@ function createMainWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false // Allow loading local files
     },
     backgroundColor: '#0a0e17',
     show: false
@@ -354,19 +387,63 @@ function createMainWindow() {
 
   mainWindow.setMenuBarVisibility(false)
 
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173')
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'))
+  // Handle load errors
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('Failed to load:', errorCode, errorDescription, validatedURL)
+  })
+
+  mainWindow.webContents.on('dom-ready', () => {
+    console.log('DOM ready')
+  })
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('Page finished loading')
+  })
+
+  // Open DevTools in development or if DEBUG env is set
+  if (isDev || process.env.SEZI_DEBUG) {
+    mainWindow.webContents.openDevTools()
   }
 
+  if (isDev) {
+    console.log('Loading dev server: http://localhost:5173')
+    mainWindow.loadURL('http://localhost:5173')
+  } else {
+    const frontendPath = getFrontendPath()
+    console.log('Loading frontend from:', frontendPath)
+    
+    // Check if file exists
+    if (!fs.existsSync(frontendPath)) {
+      console.error('Frontend file not found:', frontendPath)
+      dialog.showErrorBox('Error', `Frontend not found at: ${frontendPath}`)
+      app.quit()
+      return
+    }
+    
+    mainWindow.loadFile(frontendPath)
+  }
+
+  // Show window when ready
   mainWindow.once('ready-to-show', () => {
+    console.log('Window ready to show')
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close()
       splashWindow = null
     }
     mainWindow.show()
   })
+
+  // Fallback: show after timeout if ready-to-show doesn't fire
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.log('Forcing window show after timeout')
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close()
+        splashWindow = null
+      }
+      mainWindow.show()
+    }
+  }, 5000)
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -418,7 +495,7 @@ async function startApp() {
     updateSplashStatus('Starting backend server...')
     startBackend(pythonExe)
 
-    // Wait for backend with status updates
+    // Wait for backend
     updateSplashStatus('Waiting for server to be ready...')
     const backendReady = await waitForBackend(60)
     
@@ -451,6 +528,9 @@ async function startApp() {
     app.quit()
   }
 }
+
+// Disable hardware acceleration before app is ready to avoid GPU issues
+app.disableHardwareAcceleration()
 
 // App lifecycle
 app.whenReady().then(startApp)
