@@ -2,7 +2,7 @@
 
 const API_BASE = import.meta.env.DEV 
   ? '/api'  // In dev, Vite proxy handles this
-  : 'http://localhost:8000/api'  // In production (Electron), connect directly
+  : 'http://localhost:51735/api'  // In production (Electron), connect directly
 
 export async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`

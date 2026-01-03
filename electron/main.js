@@ -1,12 +1,17 @@
 const { app, BrowserWindow, dialog, shell } = require('electron')
-const { spawn, execSync, exec } = require('child_process')
+const { spawn, execSync } = require('child_process')
 const path = require('path')
 const fs = require('fs')
+const http = require('http')
 
 let mainWindow
 let backendProcess
 let splashWindow
 const isDev = process.env.NODE_ENV === 'development'
+
+// Use a non-common port to avoid conflicts
+const BACKEND_PORT = 51735
+const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`
 
 // Get user data path for storing venv and data
 function getUserDataPath() {
@@ -32,7 +37,7 @@ function getRuntimePath() {
 // Find Python executable
 function findPython() {
   const commands = process.platform === 'win32'
-    ? ['python', 'python3', 'py -3']
+    ? ['python', 'python3', 'py']
     : ['python3', 'python']
   
   for (const cmd of commands) {
@@ -43,8 +48,7 @@ function findPython() {
         timeout: 5000
       })
       if (result.includes('Python 3')) {
-        // Return just the base command
-        return cmd.split(' ')[0]
+        return cmd
       }
     } catch (e) {
       continue
@@ -56,8 +60,7 @@ function findPython() {
 // Check Python version
 function checkPythonVersion(pythonCmd) {
   try {
-    const args = pythonCmd === 'py' ? ['-3', '--version'] : ['--version']
-    const result = execSync(`${pythonCmd} ${args.join(' ')}`, { 
+    const result = execSync(`${pythonCmd} --version`, { 
       encoding: 'utf8',
       timeout: 5000
     })
@@ -157,27 +160,26 @@ function updateSplashStatus(message) {
   console.log('Status:', message)
 }
 
-// Setup the runtime environment (copy files, create venv, install deps)
+// Setup the runtime environment
 async function setupRuntime(pythonCmd) {
   const sourcePath = getBackendSourcePath()
   const runtimePath = getRuntimePath()
   const venvPath = path.join(runtimePath, 'venv')
-  const requirementsPath = path.join(sourcePath, 'requirements.txt')
-  const setupMarker = path.join(runtimePath, '.setup-complete')
+  const setupMarker = path.join(runtimePath, '.setup-complete-v2')
 
   // In dev mode, assume venv is already set up
   if (isDev) {
-    return path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 'python')
+    return path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 
+      process.platform === 'win32' ? 'python.exe' : 'python')
   }
 
+  const pythonExe = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 
+    process.platform === 'win32' ? 'python.exe' : 'python')
+
   // Check if already set up
-  if (fs.existsSync(setupMarker)) {
-    const pythonExe = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 
-      process.platform === 'win32' ? 'python.exe' : 'python')
-    if (fs.existsSync(pythonExe)) {
-      console.log('Runtime already set up')
-      return pythonExe
-    }
+  if (fs.existsSync(setupMarker) && fs.existsSync(pythonExe)) {
+    console.log('Runtime already set up')
+    return pythonExe
   }
 
   updateSplashStatus('Setting up environment...')
@@ -200,11 +202,7 @@ async function setupRuntime(pythonCmd) {
   // Create virtual environment
   updateSplashStatus('Creating Python environment...')
   try {
-    const venvCmd = process.platform === 'win32' && pythonCmd === 'py'
-      ? `py -3 -m venv "${venvPath}"`
-      : `"${pythonCmd}" -m venv "${venvPath}"`
-    
-    execSync(venvCmd, { 
+    execSync(`"${pythonCmd}" -m venv "${venvPath}"`, { 
       cwd: runtimePath,
       stdio: 'pipe',
       timeout: 120000
@@ -225,7 +223,7 @@ async function setupRuntime(pythonCmd) {
     execSync(`"${pipPath}" install --no-cache-dir -r "${reqPath}"`, {
       cwd: runtimePath,
       stdio: 'pipe',
-      timeout: 600000, // 10 minutes timeout
+      timeout: 600000,
       env: { ...process.env, PIP_DISABLE_PIP_VERSION_CHECK: '1' }
     })
   } catch (e) {
@@ -235,9 +233,6 @@ async function setupRuntime(pythonCmd) {
 
   // Mark setup as complete
   fs.writeFileSync(setupMarker, new Date().toISOString())
-
-  const pythonExe = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin',
-    process.platform === 'win32' ? 'python.exe' : 'python')
   
   return pythonExe
 }
@@ -266,38 +261,69 @@ function copyDirSync(src, dest, excludes = []) {
   }
 }
 
+// Check if backend is ready using http module (more reliable than fetch in Electron)
+function checkBackendHealth() {
+  return new Promise((resolve) => {
+    const req = http.get(`${BACKEND_URL}/`, (res) => {
+      resolve(res.statusCode === 200)
+    })
+    req.on('error', () => resolve(false))
+    req.setTimeout(2000, () => {
+      req.destroy()
+      resolve(false)
+    })
+  })
+}
+
+// Wait for backend to be ready
+async function waitForBackend(maxAttempts = 60) {
+  console.log('Waiting for backend to be ready...')
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    const isReady = await checkBackendHealth()
+    if (isReady) {
+      console.log(`Backend ready after ${i + 1} attempts`)
+      return true
+    }
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  
+  console.log('Backend failed to respond after', maxAttempts, 'attempts')
+  return false
+}
+
 // Start the backend server
 function startBackend(pythonExe) {
   const runtimePath = getRuntimePath()
   
   console.log('Starting backend with Python:', pythonExe)
   console.log('Working directory:', runtimePath)
+  console.log('Backend URL:', BACKEND_URL)
+
+  // Set environment variable for port
+  const env = { 
+    ...process.env, 
+    PYTHONUNBUFFERED: '1',
+    PYTHONDONTWRITEBYTECODE: '1',
+    SEZI_PORT: BACKEND_PORT.toString()
+  }
 
   backendProcess = spawn(pythonExe, ['main.py'], {
     cwd: runtimePath,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { 
-      ...process.env, 
-      PYTHONUNBUFFERED: '1',
-      PYTHONDONTWRITEBYTECODE: '1'
-    }
+    env
   })
 
   backendProcess.stdout.on('data', (data) => {
-    console.log(`Backend: ${data}`)
+    console.log(`Backend: ${data.toString().trim()}`)
   })
 
   backendProcess.stderr.on('data', (data) => {
-    const msg = data.toString()
-    console.error(`Backend: ${msg}`)
-    // Uvicorn logs to stderr, so check if it's actually running
-    if (msg.includes('Uvicorn running') || msg.includes('Application startup complete')) {
-      console.log('Backend started successfully')
-    }
+    console.log(`Backend: ${data.toString().trim()}`)
   })
 
   backendProcess.on('error', (err) => {
-    console.error('Failed to start backend:', err)
+    console.error('Failed to start backend process:', err)
   })
 
   backendProcess.on('close', (code) => {
@@ -306,22 +332,6 @@ function startBackend(pythonExe) {
   })
 
   return backendProcess
-}
-
-// Wait for backend to be ready
-async function waitForBackend(maxAttempts = 60) {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const response = await fetch('http://localhost:8000/')
-      if (response.ok) {
-        return true
-      }
-    } catch (e) {
-      // Not ready yet
-    }
-    await new Promise(resolve => setTimeout(resolve, 500))
-  }
-  return false
 }
 
 // Create main window
@@ -353,6 +363,7 @@ function createMainWindow() {
   mainWindow.once('ready-to-show', () => {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close()
+      splashWindow = null
     }
     mainWindow.show()
   })
@@ -365,6 +376,15 @@ function createMainWindow() {
     shell.openExternal(url)
     return { action: 'deny' }
   })
+}
+
+// Cleanup function
+function cleanup() {
+  if (backendProcess) {
+    console.log('Killing backend process...')
+    backendProcess.kill()
+    backendProcess = null
+  }
 }
 
 // Main startup sequence
@@ -398,12 +418,15 @@ async function startApp() {
     updateSplashStatus('Starting backend server...')
     startBackend(pythonExe)
 
-    // Wait for backend
-    updateSplashStatus('Waiting for server...')
-    const backendReady = await waitForBackend()
+    // Wait for backend with status updates
+    updateSplashStatus('Waiting for server to be ready...')
+    const backendReady = await waitForBackend(60)
     
     if (!backendReady) {
-      throw new Error('Backend server failed to start. Please check the logs.')
+      throw new Error(
+        'Backend server failed to start.\n\n' +
+        'Please ensure no other application is using port ' + BACKEND_PORT
+      )
     }
 
     // Create main window
@@ -413,8 +436,11 @@ async function startApp() {
   } catch (error) {
     console.error('Startup error:', error)
     
+    cleanup()
+    
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close()
+      splashWindow = null
     }
 
     dialog.showErrorBox(
@@ -430,30 +456,26 @@ async function startApp() {
 app.whenReady().then(startApp)
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0 && !backendProcess) {
+  if (BrowserWindow.getAllWindows().length === 0) {
     startApp()
   }
 })
 
 app.on('window-all-closed', () => {
-  if (backendProcess) {
-    backendProcess.kill()
-    backendProcess = null
-  }
-  
+  cleanup()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-app.on('before-quit', () => {
-  if (backendProcess) {
-    backendProcess.kill()
-    backendProcess = null
-  }
-})
+app.on('before-quit', cleanup)
+app.on('quit', cleanup)
 
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error)
+  cleanup()
   dialog.showErrorBox('Error', error.message)
 })
+
+process.on('SIGTERM', cleanup)
+process.on('SIGINT', cleanup)
