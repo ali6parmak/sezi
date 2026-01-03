@@ -18,7 +18,51 @@ Download the latest version for your operating system:
 | macOS | [Sezi.dmg](https://github.com/ali6parmak/sezi/releases/latest) |
 | Linux | [Sezi.AppImage](https://github.com/ali6parmak/sezi/releases/latest) |
 
-> **Note**: You need Python 3.9+ installed on your system. Download from [python.org](https://python.org/) if you don't have it.
+> **Note**: You need **Python 3.9+** installed on your system. Download from [python.org](https://python.org/) if you don't have it.
+
+### ⚠️ Platform-Specific Notes
+
+<details>
+<summary><b>🍎 macOS Users</b> - "App is damaged" error</summary>
+
+macOS may show "Sezi is damaged and can't be opened" because the app is not code-signed. To fix this:
+
+**Option 1: Right-click to open**
+1. Right-click (or Control-click) on Sezi.app
+2. Select "Open" from the context menu
+3. Click "Open" in the dialog that appears
+
+**Option 2: Remove quarantine attribute**
+```bash
+xattr -cr /Applications/Sezi.app
+```
+
+**Option 3: Allow apps from anywhere (less secure)**
+```bash
+sudo spctl --master-disable
+```
+
+</details>
+
+<details>
+<summary><b>🪟 Windows Users</b> - SmartScreen warning</summary>
+
+Windows may show a SmartScreen warning because the app is not code-signed:
+1. Click "More info"
+2. Click "Run anyway"
+
+</details>
+
+<details>
+<summary><b>🐧 Linux Users</b> - AppImage permissions</summary>
+
+Make the AppImage executable:
+```bash
+chmod +x Sezi-*.AppImage
+./Sezi-*.AppImage
+```
+
+</details>
 
 ## ✨ Features
 
@@ -49,51 +93,6 @@ Download the latest version for your operating system:
 - **Keyboard Shortcuts**: Control playback without touching the mouse
 - **Fullscreen Mode**: Distraction-free reading experience
 - **Responsive Design**: Works on desktop and tablet
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/ali6parmak/sezi.git
-   cd sezi
-   ```
-
-2. **Set up the backend**
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-3. **Set up the frontend**
-   ```bash
-   cd ../frontend
-   npm install
-   ```
-
-### Running the Application
-
-1. **Start the backend** (in one terminal)
-   ```bash
-   cd backend
-   source venv/bin/activate
-   python main.py
-   ```
-   The API will run at `http://localhost:8000`
-
-2. **Start the frontend** (in another terminal)
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-   The app will open at `http://localhost:5173`
 
 ## ⌨️ Keyboard Shortcuts
 
@@ -132,6 +131,51 @@ Download the latest version for your operating system:
 - **Electron**: Cross-platform desktop framework
 - **electron-builder**: App packaging and distribution
 
+## 🚀 Development Setup
+
+### Prerequisites
+- Python 3.9+
+- Node.js 18+
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/ali6parmak/sezi.git
+   cd sezi
+   ```
+
+2. **Set up the backend**
+   ```bash
+   cd backend
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+3. **Set up the frontend**
+   ```bash
+   cd ../frontend
+   npm install
+   ```
+
+### Running in Development
+
+1. **Start the backend** (in one terminal)
+   ```bash
+   cd backend
+   source venv/bin/activate
+   python main.py
+   ```
+   The API will run at `http://localhost:51735`
+
+2. **Start the frontend** (in another terminal)
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+   The app will open at `http://localhost:5173`
+
 ## 📁 Project Structure
 
 ```
@@ -151,6 +195,9 @@ sezi/
 │   │   └── styles/       # CSS styles
 │   ├── package.json
 │   └── vite.config.js
+├── electron/
+│   ├── main.js           # Electron main process
+│   └── preload.js        # Preload script
 └── README.md
 ```
 
@@ -165,7 +212,6 @@ git clone https://github.com/ali6parmak/sezi.git
 cd sezi
 npm install
 cd frontend && npm install && cd ..
-cd backend && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt && cd ..
 
 # Build for your platform
 npm run build:win   # Windows

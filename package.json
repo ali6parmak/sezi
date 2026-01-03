@@ -81,7 +81,9 @@
         }
       ],
       "icon": "build-resources/icon.icns",
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "dmg": {
       "contents": [

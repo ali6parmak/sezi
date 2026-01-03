@@ -34,23 +34,39 @@ function getRuntimePath() {
   return path.join(getUserDataPath(), 'backend')
 }
 
-// Find Python executable
+// Find Python executable on the system
 function findPython() {
-  const commands = process.platform === 'win32'
-    ? ['python', 'python3', 'py']
-    : ['python3', 'python']
+  const isWin = process.platform === 'win32'
   
-  for (const cmd of commands) {
+  // Try different Python commands
+  const commands = isWin
+    ? [
+        { cmd: 'py', args: ['-3', '--version'] },
+        { cmd: 'python', args: ['--version'] },
+        { cmd: 'python3', args: ['--version'] }
+      ]
+    : [
+        { cmd: 'python3', args: ['--version'] },
+        { cmd: 'python', args: ['--version'] }
+      ]
+  
+  for (const { cmd, args } of commands) {
     try {
-      const result = execSync(`${cmd} --version`, { 
+      const fullCmd = `${cmd} ${args.join(' ')}`
+      console.log('Trying:', fullCmd)
+      const result = execSync(fullCmd, { 
         encoding: 'utf8', 
         stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: 5000
+        timeout: 10000,
+        windowsHide: true
       })
+      console.log('Result:', result.trim())
       if (result.includes('Python 3')) {
-        return cmd
+        // For 'py -3', we return 'py' and handle the -3 flag separately
+        return { cmd, needsFlag: cmd === 'py' }
       }
     } catch (e) {
+      console.log('Failed:', cmd, e.message)
       continue
     }
   }
@@ -58,11 +74,16 @@ function findPython() {
 }
 
 // Check Python version
-function checkPythonVersion(pythonCmd) {
+function checkPythonVersion(pythonInfo) {
   try {
-    const result = execSync(`${pythonCmd} --version`, { 
+    const versionCmd = pythonInfo.needsFlag 
+      ? `${pythonInfo.cmd} -3 --version`
+      : `${pythonInfo.cmd} --version`
+    
+    const result = execSync(versionCmd, { 
       encoding: 'utf8',
-      timeout: 5000
+      timeout: 10000,
+      windowsHide: true
     })
     const match = result.match(/Python (\d+)\.(\d+)/)
     if (match) {
@@ -71,6 +92,7 @@ function checkPythonVersion(pythonCmd) {
       return major === 3 && minor >= 9
     }
   } catch (e) {
+    console.error('Version check failed:', e.message)
     return false
   }
   return false
@@ -161,20 +183,19 @@ function updateSplashStatus(message) {
 }
 
 // Setup the runtime environment
-async function setupRuntime(pythonCmd) {
+async function setupRuntime(pythonInfo) {
   const sourcePath = getBackendSourcePath()
   const runtimePath = getRuntimePath()
   const venvPath = path.join(runtimePath, 'venv')
-  const setupMarker = path.join(runtimePath, '.setup-complete-v2')
+  const setupMarker = path.join(runtimePath, '.setup-complete-v3')
+  const isWin = process.platform === 'win32'
 
   // In dev mode, assume venv is already set up
   if (isDev) {
-    return path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 
-      process.platform === 'win32' ? 'python.exe' : 'python')
+    return path.join(venvPath, isWin ? 'Scripts' : 'bin', isWin ? 'python.exe' : 'python')
   }
 
-  const pythonExe = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 
-    process.platform === 'win32' ? 'python.exe' : 'python')
+  const pythonExe = path.join(venvPath, isWin ? 'Scripts' : 'bin', isWin ? 'python.exe' : 'python')
 
   // Check if already set up
   if (fs.existsSync(setupMarker) && fs.existsSync(pythonExe)) {
@@ -202,10 +223,20 @@ async function setupRuntime(pythonCmd) {
   // Create virtual environment
   updateSplashStatus('Creating Python environment...')
   try {
-    execSync(`"${pythonCmd}" -m venv "${venvPath}"`, { 
+    // Build the venv command based on platform and python type
+    let venvCmd
+    if (pythonInfo.needsFlag) {
+      venvCmd = `${pythonInfo.cmd} -3 -m venv "${venvPath}"`
+    } else {
+      venvCmd = `"${pythonInfo.cmd}" -m venv "${venvPath}"`
+    }
+    
+    console.log('Creating venv with:', venvCmd)
+    execSync(venvCmd, { 
       cwd: runtimePath,
       stdio: 'pipe',
-      timeout: 120000
+      timeout: 120000,
+      windowsHide: true
     })
   } catch (e) {
     console.error('Failed to create venv:', e.message)
@@ -213,17 +244,26 @@ async function setupRuntime(pythonCmd) {
   }
 
   // Get pip path
-  const pipPath = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin',
-    process.platform === 'win32' ? 'pip.exe' : 'pip')
+  const pipExe = isWin ? 'pip.exe' : 'pip'
+  const pipPath = path.join(venvPath, isWin ? 'Scripts' : 'bin', pipExe)
+
+  // Verify pip exists
+  if (!fs.existsSync(pipPath)) {
+    throw new Error(`Pip not found at: ${pipPath}`)
+  }
 
   // Install dependencies
   updateSplashStatus('Installing dependencies (this may take a minute)...')
   try {
     const reqPath = path.join(runtimePath, 'requirements.txt')
-    execSync(`"${pipPath}" install --no-cache-dir -r "${reqPath}"`, {
+    const pipCmd = `"${pipPath}" install --no-cache-dir -r "${reqPath}"`
+    console.log('Installing deps with:', pipCmd)
+    
+    execSync(pipCmd, {
       cwd: runtimePath,
       stdio: 'pipe',
       timeout: 600000,
+      windowsHide: true,
       env: { ...process.env, PIP_DISABLE_PIP_VERSION_CHECK: '1' }
     })
   } catch (e) {
@@ -310,7 +350,8 @@ function startBackend(pythonExe) {
   backendProcess = spawn(pythonExe, ['main.py'], {
     cwd: runtimePath,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env
+    env,
+    windowsHide: true
   })
 
   backendProcess.stdout.on('data', (data) => {
@@ -336,10 +377,9 @@ function startBackend(pythonExe) {
 // Get the frontend path
 function getFrontendPath() {
   if (isDev) {
-    return null // Use dev server URL
+    return null
   }
   
-  // In production, frontend is bundled in app.asar
   const possiblePaths = [
     path.join(__dirname, '..', 'frontend', 'dist', 'index.html'),
     path.join(process.resourcesPath, 'app', 'frontend', 'dist', 'index.html'),
@@ -354,20 +394,15 @@ function getFrontendPath() {
     }
   }
   
-  // Log all files in app directory for debugging
   console.log('App path:', app.getAppPath())
   console.log('__dirname:', __dirname)
   console.log('resourcesPath:', process.resourcesPath)
   
-  return possiblePaths[0] // Return first path as fallback
+  return possiblePaths[0]
 }
 
 // Create main window
 function createMainWindow() {
-  // Disable GPU acceleration to avoid Vulkan issues on some systems
-  app.commandLine.appendSwitch('disable-gpu')
-  app.commandLine.appendSwitch('disable-software-rasterizer')
-  
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -379,7 +414,7 @@ function createMainWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false // Allow loading local files
+      webSecurity: false
     },
     backgroundColor: '#0a0e17',
     show: false
@@ -387,20 +422,14 @@ function createMainWindow() {
 
   mainWindow.setMenuBarVisibility(false)
 
-  // Handle load errors
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     console.error('Failed to load:', errorCode, errorDescription, validatedURL)
-  })
-
-  mainWindow.webContents.on('dom-ready', () => {
-    console.log('DOM ready')
   })
 
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('Page finished loading')
   })
 
-  // Open DevTools in development or if DEBUG env is set
   if (isDev || process.env.SEZI_DEBUG) {
     mainWindow.webContents.openDevTools()
   }
@@ -412,7 +441,6 @@ function createMainWindow() {
     const frontendPath = getFrontendPath()
     console.log('Loading frontend from:', frontendPath)
     
-    // Check if file exists
     if (!fs.existsSync(frontendPath)) {
       console.error('Frontend file not found:', frontendPath)
       dialog.showErrorBox('Error', `Frontend not found at: ${frontendPath}`)
@@ -423,7 +451,6 @@ function createMainWindow() {
     mainWindow.loadFile(frontendPath)
   }
 
-  // Show window when ready
   mainWindow.once('ready-to-show', () => {
     console.log('Window ready to show')
     if (splashWindow && !splashWindow.isDestroyed()) {
@@ -433,7 +460,6 @@ function createMainWindow() {
     mainWindow.show()
   })
 
-  // Fallback: show after timeout if ready-to-show doesn't fire
   setTimeout(() => {
     if (mainWindow && !mainWindow.isVisible()) {
       console.log('Forcing window show after timeout')
@@ -459,7 +485,16 @@ function createMainWindow() {
 function cleanup() {
   if (backendProcess) {
     console.log('Killing backend process...')
-    backendProcess.kill()
+    if (process.platform === 'win32') {
+      // On Windows, use taskkill to ensure child processes are killed
+      try {
+        execSync(`taskkill /pid ${backendProcess.pid} /T /F`, { windowsHide: true })
+      } catch (e) {
+        backendProcess.kill()
+      }
+    } else {
+      backendProcess.kill()
+    }
     backendProcess = null
   }
 }
@@ -469,11 +504,10 @@ async function startApp() {
   createSplashWindow()
   
   try {
-    // Find Python
     updateSplashStatus('Checking Python installation...')
-    const pythonCmd = findPython()
+    const pythonInfo = findPython()
     
-    if (!pythonCmd) {
+    if (!pythonInfo) {
       throw new Error(
         'Python 3.9+ is required but not found.\n\n' +
         'Please install Python from https://python.org\n' +
@@ -481,21 +515,18 @@ async function startApp() {
       )
     }
 
-    if (!checkPythonVersion(pythonCmd)) {
+    if (!checkPythonVersion(pythonInfo)) {
       throw new Error(
         'Python 3.9 or higher is required.\n\n' +
         'Please update Python from https://python.org'
       )
     }
 
-    // Setup runtime environment
-    const pythonExe = await setupRuntime(pythonCmd)
+    const pythonExe = await setupRuntime(pythonInfo)
 
-    // Start backend
     updateSplashStatus('Starting backend server...')
     startBackend(pythonExe)
 
-    // Wait for backend
     updateSplashStatus('Waiting for server to be ready...')
     const backendReady = await waitForBackend(60)
     
@@ -506,7 +537,6 @@ async function startApp() {
       )
     }
 
-    // Create main window
     updateSplashStatus('Loading application...')
     createMainWindow()
 
@@ -529,10 +559,9 @@ async function startApp() {
   }
 }
 
-// Disable hardware acceleration before app is ready to avoid GPU issues
+// Disable hardware acceleration before app is ready
 app.disableHardwareAcceleration()
 
-// App lifecycle
 app.whenReady().then(startApp)
 
 app.on('activate', () => {
