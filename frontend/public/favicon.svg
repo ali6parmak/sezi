@@ -1,30 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
     <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#F97316;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#EA580C;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#f97316;stop-opacity:1" />
     </linearGradient>
   </defs>
   <rect width="100" height="100" rx="20" fill="#0F172A"/>
   
-  <!-- Stylized S -->
-  <path d="M62 25 
-           C 62 25, 55 22, 45 25 
-           C 35 28, 30 38, 33 48 
-           C 36 58, 50 60, 58 65 
-           C 70 72, 72 80, 67 87 
-           C 62 94, 50 96, 38 92" 
-        fill="none" 
-        stroke="url(#grad)" 
-        stroke-width="10" 
-        stroke-linecap="round"
-        stroke-linejoin="round"/>
+  <!-- Speed lines -->
+  <g opacity="0.4">
+    <rect x="10" y="35" width="18" height="3" rx="1.5" fill="#f97316"/>
+    <rect x="14" y="42" width="14" height="3" rx="1.5" fill="#f97316"/>
+    <rect x="8" y="49" width="20" height="3" rx="1.5" fill="#f97316"/>
+    <rect x="12" y="56" width="16" height="3" rx="1.5" fill="#f97316"/>
+    <rect x="10" y="63" width="18" height="3" rx="1.5" fill="#f97316"/>
+  </g>
   
-  <!-- Intuition spark -->
-  <circle cx="76" cy="30" r="6" fill="url(#glow)"/>
-  <circle cx="76" cy="30" r="2.5" fill="#fff"/>
+  <!-- Lightning bolt -->
+  <path d="M58 18 L45 45 L58 45 L38 85 L68 50 L55 50 L72 18 Z" fill="url(#grad)"/>
+  
+  <!-- Highlight -->
+  <path d="M60 25 L50 45 L60 45 L48 72" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+  
+  <!-- Sparks -->
+  <circle cx="78" cy="28" r="4" fill="url(#grad)" opacity="0.8"/>
+  <circle cx="85" cy="38" r="2.5" fill="#f97316" opacity="0.6"/>
 </svg>

@@ -1,47 +1,286 @@
 const { app, BrowserWindow, dialog, shell } = require('electron')
-const { spawn } = require('child_process')
+const { spawn, execSync, exec } = require('child_process')
 const path = require('path')
 const fs = require('fs')
 
 let mainWindow
 let backendProcess
+let splashWindow
 const isDev = process.env.NODE_ENV === 'development'
 
-// Get the path to Python and the backend
-function getBackendPath() {
+// Get user data path for storing venv and data
+function getUserDataPath() {
+  return app.getPath('userData')
+}
+
+// Get the path to the backend source
+function getBackendSourcePath() {
   if (isDev) {
     return path.join(__dirname, '..', 'backend')
   }
-  // In production, backend is in resources
   return path.join(process.resourcesPath, 'backend')
 }
 
-function getPythonPath() {
-  // Try to find Python
-  const pythonCommands = process.platform === 'win32' 
-    ? ['python', 'python3', 'py']
-    : ['python3', 'python']
-  
-  return pythonCommands[0] // Will be validated when starting
+// Get the path where we'll set up the runtime environment
+function getRuntimePath() {
+  if (isDev) {
+    return path.join(__dirname, '..', 'backend')
+  }
+  return path.join(getUserDataPath(), 'backend')
 }
 
-function startBackend() {
-  const backendPath = getBackendPath()
-  const pythonPath = getPythonPath()
+// Find Python executable
+function findPython() {
+  const commands = process.platform === 'win32'
+    ? ['python', 'python3', 'py -3']
+    : ['python3', 'python']
   
-  console.log('Starting backend from:', backendPath)
+  for (const cmd of commands) {
+    try {
+      const result = execSync(`${cmd} --version`, { 
+        encoding: 'utf8', 
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000
+      })
+      if (result.includes('Python 3')) {
+        // Return just the base command
+        return cmd.split(' ')[0]
+      }
+    } catch (e) {
+      continue
+    }
+  }
+  return null
+}
+
+// Check Python version
+function checkPythonVersion(pythonCmd) {
+  try {
+    const args = pythonCmd === 'py' ? ['-3', '--version'] : ['--version']
+    const result = execSync(`${pythonCmd} ${args.join(' ')}`, { 
+      encoding: 'utf8',
+      timeout: 5000
+    })
+    const match = result.match(/Python (\d+)\.(\d+)/)
+    if (match) {
+      const major = parseInt(match[1])
+      const minor = parseInt(match[2])
+      return major === 3 && minor >= 9
+    }
+  } catch (e) {
+    return false
+  }
+  return false
+}
+
+// Create splash/loading window
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 400,
+    height: 300,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  })
+
+  const splashHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: linear-gradient(135deg, #0a0e17 0%, #1a2332 100%);
+          color: #e2e8f0;
+          height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          border-radius: 16px;
+          overflow: hidden;
+        }
+        .logo {
+          font-size: 48px;
+          font-weight: bold;
+          background: linear-gradient(135deg, #f97316, #fbbf24);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          margin-bottom: 24px;
+        }
+        .status {
+          font-size: 14px;
+          color: #94a3b8;
+          margin-bottom: 16px;
+          text-align: center;
+          padding: 0 20px;
+        }
+        .spinner {
+          width: 40px;
+          height: 40px;
+          border: 3px solid #1e293b;
+          border-top-color: #f97316;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="logo">Sezi</div>
+      <div class="status" id="status">Starting...</div>
+      <div class="spinner"></div>
+      <script>
+        const { ipcRenderer } = require('electron')
+        ipcRenderer.on('status', (e, msg) => {
+          document.getElementById('status').textContent = msg
+        })
+      </script>
+    </body>
+    </html>
+  `
+
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHTML)}`)
+}
+
+function updateSplashStatus(message) {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send('status', message)
+  }
+  console.log('Status:', message)
+}
+
+// Setup the runtime environment (copy files, create venv, install deps)
+async function setupRuntime(pythonCmd) {
+  const sourcePath = getBackendSourcePath()
+  const runtimePath = getRuntimePath()
+  const venvPath = path.join(runtimePath, 'venv')
+  const requirementsPath = path.join(sourcePath, 'requirements.txt')
+  const setupMarker = path.join(runtimePath, '.setup-complete')
+
+  // In dev mode, assume venv is already set up
+  if (isDev) {
+    return path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 'python')
+  }
+
+  // Check if already set up
+  if (fs.existsSync(setupMarker)) {
+    const pythonExe = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin', 
+      process.platform === 'win32' ? 'python.exe' : 'python')
+    if (fs.existsSync(pythonExe)) {
+      console.log('Runtime already set up')
+      return pythonExe
+    }
+  }
+
+  updateSplashStatus('Setting up environment...')
+
+  // Create runtime directory
+  if (!fs.existsSync(runtimePath)) {
+    fs.mkdirSync(runtimePath, { recursive: true })
+  }
+
+  // Copy backend files
+  updateSplashStatus('Copying application files...')
+  copyDirSync(sourcePath, runtimePath, ['venv', '__pycache__', 'data', '.pyc'])
+
+  // Create data directory
+  const dataPath = path.join(runtimePath, 'data', 'uploads')
+  if (!fs.existsSync(dataPath)) {
+    fs.mkdirSync(dataPath, { recursive: true })
+  }
+
+  // Create virtual environment
+  updateSplashStatus('Creating Python environment...')
+  try {
+    const venvCmd = process.platform === 'win32' && pythonCmd === 'py'
+      ? `py -3 -m venv "${venvPath}"`
+      : `"${pythonCmd}" -m venv "${venvPath}"`
+    
+    execSync(venvCmd, { 
+      cwd: runtimePath,
+      stdio: 'pipe',
+      timeout: 120000
+    })
+  } catch (e) {
+    console.error('Failed to create venv:', e.message)
+    throw new Error(`Failed to create Python environment: ${e.message}`)
+  }
+
+  // Get pip path
+  const pipPath = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin',
+    process.platform === 'win32' ? 'pip.exe' : 'pip')
+
+  // Install dependencies
+  updateSplashStatus('Installing dependencies (this may take a minute)...')
+  try {
+    const reqPath = path.join(runtimePath, 'requirements.txt')
+    execSync(`"${pipPath}" install --no-cache-dir -r "${reqPath}"`, {
+      cwd: runtimePath,
+      stdio: 'pipe',
+      timeout: 600000, // 10 minutes timeout
+      env: { ...process.env, PIP_DISABLE_PIP_VERSION_CHECK: '1' }
+    })
+  } catch (e) {
+    console.error('Failed to install dependencies:', e.message)
+    throw new Error(`Failed to install dependencies: ${e.message}`)
+  }
+
+  // Mark setup as complete
+  fs.writeFileSync(setupMarker, new Date().toISOString())
+
+  const pythonExe = path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin',
+    process.platform === 'win32' ? 'python.exe' : 'python')
   
-  // Check if we're using bundled Python (for production)
-  const venvPython = process.platform === 'win32'
-    ? path.join(backendPath, 'venv', 'Scripts', 'python.exe')
-    : path.join(backendPath, 'venv', 'bin', 'python')
+  return pythonExe
+}
+
+// Recursive copy directory
+function copyDirSync(src, dest, excludes = []) {
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true })
+  }
+
+  const entries = fs.readdirSync(src, { withFileTypes: true })
   
-  const pythonExecutable = fs.existsSync(venvPython) ? venvPython : pythonPath
+  for (const entry of entries) {
+    if (excludes.some(ex => entry.name === ex || entry.name.endsWith(ex))) {
+      continue
+    }
+
+    const srcPath = path.join(src, entry.name)
+    const destPath = path.join(dest, entry.name)
+
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath, excludes)
+    } else {
+      fs.copyFileSync(srcPath, destPath)
+    }
+  }
+}
+
+// Start the backend server
+function startBackend(pythonExe) {
+  const runtimePath = getRuntimePath()
   
-  backendProcess = spawn(pythonExecutable, ['main.py'], {
-    cwd: backendPath,
+  console.log('Starting backend with Python:', pythonExe)
+  console.log('Working directory:', runtimePath)
+
+  backendProcess = spawn(pythonExe, ['main.py'], {
+    cwd: runtimePath,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    env: { 
+      ...process.env, 
+      PYTHONUNBUFFERED: '1',
+      PYTHONDONTWRITEBYTECODE: '1'
+    }
   })
 
   backendProcess.stdout.on('data', (data) => {
@@ -49,92 +288,157 @@ function startBackend() {
   })
 
   backendProcess.stderr.on('data', (data) => {
-    console.error(`Backend Error: ${data}`)
+    const msg = data.toString()
+    console.error(`Backend: ${msg}`)
+    // Uvicorn logs to stderr, so check if it's actually running
+    if (msg.includes('Uvicorn running') || msg.includes('Application startup complete')) {
+      console.log('Backend started successfully')
+    }
   })
 
   backendProcess.on('error', (err) => {
     console.error('Failed to start backend:', err)
-    dialog.showErrorBox(
-      'Backend Error',
-      `Failed to start the backend server.\n\nPlease ensure Python is installed.\n\nError: ${err.message}`
-    )
   })
 
   backendProcess.on('close', (code) => {
-    console.log(`Backend process exited with code ${code}`)
+    console.log(`Backend exited with code ${code}`)
+    backendProcess = null
   })
+
+  return backendProcess
 }
 
-function createWindow() {
+// Wait for backend to be ready
+async function waitForBackend(maxAttempts = 60) {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const response = await fetch('http://localhost:8000/')
+      if (response.ok) {
+        return true
+      }
+    } catch (e) {
+      // Not ready yet
+    }
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  return false
+}
+
+// Create main window
+function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 800,
     minHeight: 600,
     title: 'Sezi',
-    icon: path.join(__dirname, '..', 'frontend', 'public', 'favicon.svg'),
+    icon: path.join(__dirname, '..', 'build-resources', 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     },
     backgroundColor: '#0a0e17',
-    show: false // Don't show until ready
+    show: false
   })
 
-  // Remove menu bar
   mainWindow.setMenuBarVisibility(false)
 
-  // Wait for backend to be ready
-  const checkBackend = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/')
-      if (response.ok) {
-        // Backend is ready, load the app
-        if (isDev) {
-          mainWindow.loadURL('http://localhost:5173')
-        } else {
-          mainWindow.loadFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'))
-        }
-        mainWindow.show()
-      } else {
-        setTimeout(checkBackend, 500)
-      }
-    } catch (err) {
-      setTimeout(checkBackend, 500)
-    }
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173')
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'))
   }
 
-  // Start checking after a short delay
-  setTimeout(checkBackend, 1000)
+  mainWindow.once('ready-to-show', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+    }
+    mainWindow.show()
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null
   })
 
-  // Open external links in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
   })
 }
 
-// App lifecycle
-app.whenReady().then(() => {
-  startBackend()
-  createWindow()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+// Main startup sequence
+async function startApp() {
+  createSplashWindow()
+  
+  try {
+    // Find Python
+    updateSplashStatus('Checking Python installation...')
+    const pythonCmd = findPython()
+    
+    if (!pythonCmd) {
+      throw new Error(
+        'Python 3.9+ is required but not found.\n\n' +
+        'Please install Python from https://python.org\n' +
+        'Make sure to check "Add Python to PATH" during installation.'
+      )
     }
-  })
+
+    if (!checkPythonVersion(pythonCmd)) {
+      throw new Error(
+        'Python 3.9 or higher is required.\n\n' +
+        'Please update Python from https://python.org'
+      )
+    }
+
+    // Setup runtime environment
+    const pythonExe = await setupRuntime(pythonCmd)
+
+    // Start backend
+    updateSplashStatus('Starting backend server...')
+    startBackend(pythonExe)
+
+    // Wait for backend
+    updateSplashStatus('Waiting for server...')
+    const backendReady = await waitForBackend()
+    
+    if (!backendReady) {
+      throw new Error('Backend server failed to start. Please check the logs.')
+    }
+
+    // Create main window
+    updateSplashStatus('Loading application...')
+    createMainWindow()
+
+  } catch (error) {
+    console.error('Startup error:', error)
+    
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+    }
+
+    dialog.showErrorBox(
+      'Sezi - Startup Error',
+      error.message || 'An unexpected error occurred during startup.'
+    )
+    
+    app.quit()
+  }
+}
+
+// App lifecycle
+app.whenReady().then(startApp)
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0 && !backendProcess) {
+    startApp()
+  }
 })
 
 app.on('window-all-closed', () => {
-  // Kill backend process
   if (backendProcess) {
     backendProcess.kill()
+    backendProcess = null
   }
   
   if (process.platform !== 'darwin') {
@@ -145,12 +449,11 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   if (backendProcess) {
     backendProcess.kill()
+    backendProcess = null
   }
 })
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error)
   dialog.showErrorBox('Error', error.message)
 })
-

@@ -17,37 +17,42 @@
   <!-- Background -->
   <rect width="512" height="512" rx="96" fill="url(#bg)"/>
   
-  <!-- Stylized "S" representing intuition/flow -->
-  <path d="M320 140 
-           C 320 140, 280 120, 220 140 
-           C 160 160, 140 200, 160 240 
-           C 180 280, 240 290, 280 310 
-           C 340 340, 360 380, 340 420 
-           C 320 460, 260 480, 192 460" 
-        fill="none" 
-        stroke="url(#accent)" 
-        stroke-width="40" 
-        stroke-linecap="round"
-        stroke-linejoin="round"/>
+  <!-- Speed lines (left side) -->
+  <g opacity="0.4">
+    <rect x="60" y="180" width="80" height="8" rx="4" fill="url(#accent)"/>
+    <rect x="80" y="210" width="60" height="8" rx="4" fill="url(#accent)"/>
+    <rect x="50" y="240" width="90" height="8" rx="4" fill="url(#accent)"/>
+    <rect x="70" y="270" width="70" height="8" rx="4" fill="url(#accent)"/>
+    <rect x="55" y="300" width="85" height="8" rx="4" fill="url(#accent)"/>
+    <rect x="75" y="330" width="65" height="8" rx="4" fill="url(#accent)"/>
+  </g>
   
-  <!-- Inner glow/highlight on the S -->
-  <path d="M300 160 
-           C 300 160, 270 145, 225 160 
-           C 180 175, 170 205, 185 235 
-           C 200 265, 250 275, 285 295" 
+  <!-- Lightning bolt (speed/power symbol) -->
+  <path d="M280 100 
+           L220 230 
+           L280 230 
+           L200 420 
+           L320 250 
+           L260 250 
+           L340 100 Z" 
+        fill="url(#glow)"/>
+  
+  <!-- Inner highlight on lightning -->
+  <path d="M290 130 
+           L245 230 
+           L290 230 
+           L230 380" 
         fill="none" 
-        stroke="url(#glow)" 
+        stroke="#fff" 
         stroke-width="12" 
         stroke-linecap="round"
         stroke-linejoin="round"
-        opacity="0.6"/>
+        opacity="0.3"/>
   
-  <!-- Intuition spark/eye element -->
-  <ellipse cx="380" cy="160" rx="28" ry="28" fill="url(#glow)" opacity="0.9"/>
-  <ellipse cx="380" cy="160" rx="12" ry="12" fill="#fff" opacity="0.9"/>
-  
-  <!-- Small accent dots representing reading flow -->
-  <circle cx="132" cy="300" r="8" fill="url(#accent)" opacity="0.6"/>
-  <circle cx="148" cy="340" r="6" fill="url(#accent)" opacity="0.4"/>
-  <circle cx="140" cy="380" r="5" fill="url(#accent)" opacity="0.3"/>
+  <!-- Small spark particles -->
+  <circle cx="380" cy="150" r="12" fill="url(#glow)" opacity="0.8"/>
+  <circle cx="400" cy="200" r="8" fill="url(#accent)" opacity="0.6"/>
+  <circle cx="420" cy="170" r="6" fill="url(#glow)" opacity="0.5"/>
+  <circle cx="150" cy="380" r="10" fill="url(#accent)" opacity="0.5"/>
+  <circle cx="130" cy="410" r="6" fill="url(#glow)" opacity="0.4"/>
 </svg>

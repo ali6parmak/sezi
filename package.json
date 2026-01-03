@@ -34,21 +34,19 @@
     "files": [
       "electron/**/*",
       "frontend/dist/**/*",
-      "backend/**/*",
-      "!backend/venv/**/*",
-      "!backend/data/**/*",
-      "!backend/__pycache__/**/*",
-      "!**/node_modules/**/*"
+      "build-resources/icon.png"
     ],
     "extraResources": [
       {
         "from": "backend",
         "to": "backend",
         "filter": [
-          "**/*",
-          "!venv/**/*",
-          "!data/**/*",
-          "!__pycache__/**/*"
+          "**/*.py",
+          "requirements.txt",
+          "!venv/**",
+          "!data/**",
+          "!__pycache__/**",
+          "!*.pyc"
         ]
       }
     ],
